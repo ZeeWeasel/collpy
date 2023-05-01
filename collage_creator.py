@@ -2,6 +2,7 @@ import os
 import argparse
 import sys
 import time
+import piexif
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
@@ -23,13 +24,24 @@ def load_images(directory):
     images = []
     for filename in os.listdir(directory):
         try:
-            img = Image.open(os.path.join(directory, filename))
-            images.append((img.copy(), filename))
+            file_path = os.path.join(directory, filename)
+            img = Image.open(file_path)
+            created_date = extract_creation_date(file_path)
+            images.append((img.copy(), filename, created_date))
             img.close()
         except IOError:
             print(f"Could not open or process '{filename}'. Skipping this file.")
     return images
 
+def extract_creation_date(image_path):
+    try:
+        exif_dict = piexif.load(image_path)
+        if piexif.ExifIFD.DateTimeOriginal in exif_dict['Exif']:
+            date_str = exif_dict['Exif'][piexif.ExifIFD.DateTimeOriginal].decode('utf-8')
+            return datetime.strptime(date_str, '%Y:%m:%d %H:%M:%S')
+    except Exception as e:
+        print(f"Error extracting creation date from '{image_path}': {e}")
+    return datetime.fromtimestamp(os.path.getmtime(image_path))  # fallback to modification time
 
 def create_collage(imgs, collage_id, width, height, p, verbose=True):
     num_imgs = len(imgs)
@@ -42,7 +54,7 @@ def create_collage(imgs, collage_id, width, height, p, verbose=True):
 
     font = ImageFont.truetype(p['font'], size=p['text_size'])
 
-    for i, (img, filename) in enumerate(imgs):
+    for i, (img, filename, created_date) in enumerate(imgs):
 
         row_idx, col_idx = divmod(i, num_cols)
 
@@ -119,18 +131,18 @@ def main():
     parser = argparse.ArgumentParser(description='Generate image collages with custom settings.')
     parser.add_argument('-v', '--verbose', action='store_true', default=True, help='Enable verbose output.')
     parser.add_argument('-f', '--folder', type=str, default='images', help='Folder containing the images.')
-    parser.add_argument('--width', type=int, default=6600, help='Width of collage image.')
-    parser.add_argument('--height', type=int, default=5100, help='Height of collage image.')
+    parser.add_argument('--width', type=int, default=5100, help='Width of collage image.')
+    parser.add_argument('--height', type=int, default=6600, help='Height of collage image.')
     parser.add_argument('-F', '--font', type=str, default=None, help='Font filename for the text.')
-    parser.add_argument('-p', '--pics-per-page', type=int, default=24, help='Amount of pictures per collage page.')
+    parser.add_argument('-p', '--pics-per-page', type=int, default=30, help='Amount of pictures per collage page.')
     parser.add_argument('-b', '--border', action='store_false', help='Enable border around images.')
-    parser.add_argument('-t', '--border-thickness', type=int, default=10, help='Border thickness around images.')
-    parser.add_argument('-c', '--border-color', type=str, default='0,0,0', help='Border color around images (R,G,B).')
-    parser.add_argument('-P', '--padding', type=int, default=10, help='Padding between images in pixels.')
+    parser.add_argument('-t', '--border-thickness', type=int, default=4, help='Border thickness around images.')
+    parser.add_argument('-c', '--border-color', type=str, default='255,255,255', help='Border color around images (R,G,B).')
+    parser.add_argument('-P', '--padding', type=int, default=6, help='Padding between images in pixels.')
     parser.add_argument('-a', '--align', type=str, choices=['left', 'center', 'right'], default='left', help='Alignment of images in each column.')
-    parser.add_argument('-s', '--text-size', type=int, default=24, help='Size of the text.')
-    parser.add_argument('-o', '--text-opacity', type=float, default=0.8, help='Opacity of the text (0 to 1).')
-    parser.add_argument('-d', '--date-format', type=str, default='%Y-%m-%d', help='Date format for image dates.')
+    parser.add_argument('-s', '--text-size', type=int, default=32, help='Size of the text.')
+    parser.add_argument('-o', '--text-opacity', type=float, default=1.0, help='Opacity of the text (0 to 1).')
+    parser.add_argument('-d', '--date-format', type=str, default='%m-%d', help='Date format for image dates. ') # %Y-%m-%d
     parser.add_argument('-x', '--prefix', type=str, default='collage', help='Filename prefix for the collage.')
     parser.add_argument('-g', '--bg-color', type=str, default='255,255,255', help='Background color for the canvas (R,G,B).')
     parser.add_argument('-i', '--info-box', action='store_true', help='Enable info box with date and parameters.')
